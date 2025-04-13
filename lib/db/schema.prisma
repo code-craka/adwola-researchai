@@ -1,0 +1,233 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication and profile information
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?
+  image         String?
+  role          String    @default("user")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  stripeCustomerId    String?
+  planType            String    @default("free")
+  subscriptionStatus  String?
+
+  // Relationships
+  accounts      Account[]
+  sessions      Session[]
+  projects      Project[]
+  collaborations ProjectCollaborator[]
+  errorLogs   ErrorLog[]
+}
+
+// Account model for OAuth providers
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// Session model for authentication
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Project model for storing research projects
+model Project {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  userId      String
+  status      String   @default("draft") // draft, processing, completed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents     Document[]
+  outputs       Output[]
+  collaborators ProjectCollaborator[]
+  comments      Comment[]
+  versions      ProjectVersion[]
+  errorLogs   ErrorLog[]
+}
+
+// Document model for storing uploaded research papers
+model Document {
+  id          String   @id @default(cuid())
+  projectId   String
+  filename    String
+  fileType    String
+  fileSize    Int
+  fileUrl     String
+  textContent String?  @db.Text
+  summary     String?  @db.Text
+  metadata    Json?
+  status      String?  @default("uploaded") // uploaded, processing, ready, processing_failed, processing_incomplete
+  processingError String? @db.Text
+  processingErrorDetails String? @db.Text
+  processingDetails String? @db.Text
+  retryCount  Int      @default(0)
+  lastRetryAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  figures  Figure[]
+  tables   Table[]
+  sections Section[]
+  errorLogs   ErrorLog[]
+}
+
+// Figure model for storing extracted figures
+model Figure {
+  id          String   @id @default(cuid())
+  documentId  String
+  pageNumber  Int?
+  description String?
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+// Table model for storing extracted tables
+model Table {
+  id          String   @id @default(cuid())
+  documentId  String
+  pageNumber  Int?
+  description String?
+  tableData   Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+// Section model for storing document sections
+model Section {
+  id          String   @id @default(cuid())
+  documentId  String
+  name        String
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+// Output model for storing generated content
+model Output {
+  id          String   @id @default(cuid())
+  projectId   String
+  type        String   // presentation, podcast, visual
+  title       String
+  description String?
+  fileUrl     String?
+  thumbnailUrl String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// ProjectCollaborator model for collaboration
+model ProjectCollaborator {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  role      String   @default("viewer") // viewer, editor, admin
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+// Comment model for collaboration
+model Comment {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// ProjectVersion model for version control
+model ProjectVersion {
+  id          String   @id @default(cuid())
+  projectId   String
+  versionNumber Int
+  description String?
+  snapshot    Json
+  createdAt   DateTime @default(now())
+
+  // Relationships
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// Error logging model
+model ErrorLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  category    String
+  severity    String
+  message     String
+  details     String?  @db.Text
+  stack       String?  @db.Text
+  documentId  String?
+  projectId   String?
+  fileName    String?
+  fileType    String?
+  fileSize    Int?
+  createdAt   DateTime @default(now())
+
+  // Relationships (optional)
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  document    Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
